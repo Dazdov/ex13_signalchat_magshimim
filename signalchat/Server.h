@@ -3,6 +3,11 @@
 
 #include <WinSock2.h>
 #include <Windows.h>
+#include <string>
+#include <vector>
+#include <queue>
+#include <mutex>
+
 
 
 class Server
@@ -13,9 +18,23 @@ public:
 	void serve(int port);
 
 private:
+	//things i need
+	SOCKET _serverSocket;
+	std::vector<std::string> _activeUsers;
+	std::queue<std::string> _globalMessages;
+	std::mutex _queueLock;
 
-	void acceptClient();
+
+	void writeToFile();
+	void accept();
 	void clientHandler(SOCKET clientSocket);
 
-	SOCKET _serverSocket;
+	std::string returnUsers() const;
+	std::string login(SOCKET clientSocket);
+	std::string getFileName(std::string firstUsername, std::string secondUsername);
+	std::string getFileContent(std::string firstUsername, std::string secondUsername);
+
+
+
 };
+
