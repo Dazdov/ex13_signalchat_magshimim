@@ -1,3 +1,4 @@
+
 #include "Server.h"
 
 #include <exception>
@@ -70,51 +71,68 @@ void Server::accept()
 	std::thread td(&Server::clientHandler, this, client_socket);
 	td.detach();
 }
+
 void Server::clientHandler(SOCKET clientSocket)
 {
 	try
 	{
-		std::string s = "Welcome! What is your name (4 bytes)? ";
-		send(clientSocket, s.c_str(), s.size(), 0); 
+		std::string username = "";
+		std::string secondUsername = "";
+		std::string newMessage = "";
+		int packetCode = 0;			
+		int length = 0;				
 
-		char m[5];
-		recv(clientSocket, m, 4, 0);
-		m[4] = 0;
-		std::cout << "Client name is: " << m << std::endl;
+		username = this->login(clientSocket);
 
-		s = "Bye";
-		send(clientSocket, s.c_str(), s.size(), 0);
+		Helper::send_update_message_to_client(clientSocket, "", returnUsers(), username);
 
-		closesocket(clientSocket);
+
+		while (true)
+		{
+		 
+			packetCode = Helper::getIntPartFromSocket(clientSocket, 3);
+
+			int secondUserLength = Helper::getIntPartFromSocket(clientSocket, 2);
+			std::string secondUsername = Helper::getStringPartFromSocket(clientSocket, secondUserLength);
+			int newMessageLength = Helper::getIntPartFromSocket(clientSocket, 5);
+			std::string newMessage = Helper::getStringPartFromSocket(clientSocket, newMessageLength);
+
+			if (secondUserLength == 0)
+				Helper::send_update_message_to_client(clientSocket, "", "", this->returnUsers());
+			else
+			{
+
+				if (newMessageLength == 0)
+					Helper::send_update_message_to_client(clientSocket, this->getFileContent(username, secondUsername), secondUsername, this->returnUsers());
+				else
+				{
+					std::cout << "New message: \nAUTHOR: " << username << "\nReciever: " << secondUsername << std::endl;
+					{
+						std::lock_guard<std::mutex> lock(this->_queueLock);
+						//Push the message like that: author#reciever#message
+						this->_globalMessages.push(username + "#" + secondUsername + "#" + newMessage);
+					}
+
+					std::string updatedMessage = "&MAGSH_MESSAGE&&Author&" + username + "&DATA&" + newMessage;
+					std::string fileContent = this->getFileContent(username, secondUsername) + updatedMessage, secondUsername;
+
+					Helper::send_update_message_to_client(clientSocket, fileContent, secondUsername, this->returnUsers());
+				}
+				std::cout << username << ": " << packetCode << secondUsername;
+			}
+		}
 	}
 	catch (const std::exception& e)
 	{
 		closesocket(clientSocket);
+		std::string username = e.what();
+		username = username.substr(0, username.find("#"));
+
+		std::vector<std::string>::iterator name = std::find(this->_activeUsers.begin(), this->_activeUsers.end(), username);
+		if (name != this->_activeUsers.end())
+			this->_activeUsers.erase(name);
+		std::cout << "User Disconnected: " << e.what() << std::endl;
 	}
-
-
-}
-
-std::string Server::login(SOCKET clientSocket)
-{
-	std::string username = "";
-	int packetCode = 0; 
-	int length = 0;       
-
-	//code
-	packetCode = Helper::getIntPartFromSocket(clientSocket, 3);
-	std::cout << "Received packet code: " << packetCode << std::endl;
-
-	//len
-	length = Helper::getIntPartFromSocket(clientSocket, 2);
-	std::cout << "Received length: " << length << std::endl;
-
-	//name
-	username = Helper::getStringPartFromSocket(clientSocket, length);
-	this->_activeUsers.push_back(username);
-	std::cout << "User logged in: " << username << std::endl;
-
-	return username;
 }
 
 
@@ -207,5 +225,22 @@ std::string Server::getFileContent(std::string firstUsername, std::string second
 	}
 	std::cout << content << std::endl;
 	return content;
+}
+
+std::string Server::login(SOCKET clientSocket)
+{
+	std::string username = "";
+	int packetCode = 0;	
+	int length = 0;				
+
+	packetCode = Helper::getIntPartFromSocket(clientSocket, 3);
+	std::cout << packetCode << " ";
+	length = Helper::getIntPartFromSocket(clientSocket, 2);
+	std::cout << length << " ";
+
+	username = Helper::getStringPartFromSocket(clientSocket, length);
+	this->_activeUsers.push_back(username);
+	std::cout << username << std::endl;
+	return username;
 }
 
